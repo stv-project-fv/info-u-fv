@@ -1,0 +1,5 @@
+.streamlit/
+__pycache__/
+*.pyc
+aply22.py
+.env
