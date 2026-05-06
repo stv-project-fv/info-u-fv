@@ -32,7 +32,7 @@ def load_data():
         scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
         creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
         client = gspread.authorize(creds)
-        sheet = client.open_by_key(st.secrets["spreadsheet_id"]).sheet1
+        sheet = client.open_by_key(st.secrets["spreadsheet_id"]).worksheet("AUX2")
         data = pd.DataFrame(sheet.get_all_records())
     else:
         st.error("No se encontraron las credenciales de GSheets en st.secrets.")
