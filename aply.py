@@ -130,7 +130,7 @@ try:
         
         with col2:
             filtro_area = st.selectbox("Filtrar por Área:", 
-                                       ["TODAS", "SERVICIOS PÚBLICOS", "AMBIENTE", "SECRETARÍA", "ARQUITECTURA"])
+                                       ["TODAS", "SERVICIOS PÚBLICOS", "AMBIENTE", "SECRETARÍA", "ARQUITECTURA", "DELEGACIONES", "OBRAS"])
         
         with col3:
             filtro_estado = st.selectbox("Filtrar por Estado:", ["TODOS", "ACTIVOS", "INACTIVOS"])
@@ -145,6 +145,10 @@ try:
                 # 2. Filtrado por Área
                 if filtro_area == "SERVICIOS PÚBLICOS":
                     df_f = df_f[df_f['ÁREA'].isin(AREAS_SSPP)]
+                elif filtro_area == "DELEGACIONES":
+                    df_f = df_f[df_f['ÁREA'].str.contains("DELEGACI", na=False)]
+                elif filtro_area == "OBRAS":
+                    df_f = df_f[~df_f['ÁREA'].str.contains("DELEGACI", na=False)]
                 elif filtro_area != "TODAS":
                     df_f = df_f[df_f['ÁREA'] == filtro_area]
                     
@@ -238,9 +242,13 @@ try:
                     components.html(copy_js, height=70)
 
     with tab2:
+        # Filtrar para que NO CUENTEN las delegaciones en el Parte Diario
+        df_diario = df[~df['ÁREA'].str.contains("DELEGACI", na=False)].copy() if not df.empty else df
+        df_c_diario = df_contratados[~df_contratados['AREA_C'].str.contains("DELEGACI", na=False)].copy() if not df_contratados.empty else df_contratados
+
         st.markdown("### Seleccionar tipos para el Parte Diario")
-        tipos_propios = set(df['TIPO'].unique()) if not df.empty and 'TIPO' in df.columns else set()
-        tipos_contra = set(df_contratados['TIPO_C'].unique()) if not df_contratados.empty and 'TIPO_C' in df_contratados.columns else set()
+        tipos_propios = set(df_diario['TIPO'].unique()) if not df_diario.empty and 'TIPO' in df_diario.columns else set()
+        tipos_contra = set(df_c_diario['TIPO_C'].unique()) if not df_c_diario.empty and 'TIPO_C' in df_c_diario.columns else set()
         tipos_unificados = sorted(list(tipos_propios.union(tipos_contra)))
         tipos_unificados = [t for t in tipos_unificados if str(t).strip() != ""]
 
@@ -257,16 +265,16 @@ try:
                     # PROPIOS OPERATIVOS
                     cant_propios = 0
                     df_p_op = pd.DataFrame()
-                    if not df.empty and 'TIPO' in df.columns:
-                        df_p_tipo = df[df['TIPO'] == tipo]
+                    if not df_diario.empty and 'TIPO' in df_diario.columns:
+                        df_p_tipo = df_diario[df_diario['TIPO'] == tipo]
                         df_p_op = df_p_tipo[df_p_tipo['ESTADO'].isin(['ACTIVO', 'ACTIVA'])]
                         cant_propios = len(df_p_op)
                     
                     # CONTRATADOS
                     cant_contratados = 0
                     df_c_tipo = pd.DataFrame()
-                    if not df_contratados.empty and 'TIPO_C' in df_contratados.columns:
-                        df_c_tipo = df_contratados[df_contratados['TIPO_C'] == tipo]
+                    if not df_c_diario.empty and 'TIPO_C' in df_c_diario.columns:
+                        df_c_tipo = df_c_diario[df_c_diario['TIPO_C'] == tipo]
                         cant_contratados = df_c_tipo['CANTIDAD_C'].sum()
                     
                     total_operativos = cant_propios + cant_contratados
@@ -290,10 +298,10 @@ try:
 
                 # NOVEDADES
                 df_novedades = pd.DataFrame()
-                if not df.empty and 'TIPO' in df.columns:
-                    df_novedades = df[
-                        (df['TIPO'].isin(tipo_sel_diario)) & 
-                        (df['ESTADO'].isin(['INACTIVO', 'INACTIVA', 'IRRECUPERABLE']))
+                if not df_diario.empty and 'TIPO' in df_diario.columns:
+                    df_novedades = df_diario[
+                        (df_diario['TIPO'].isin(tipo_sel_diario)) & 
+                        (df_diario['ESTADO'].isin(['INACTIVO', 'INACTIVA', 'IRRECUPERABLE']))
                     ]
                 
                 if not df_novedades.empty:
