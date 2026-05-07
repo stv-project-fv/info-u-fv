@@ -13,7 +13,7 @@ st.set_page_config(
 )
 # --- CONFIGURACIÓN ---
 # Ahora la conexión se hace a través de st.secrets["spreadsheet_id"] y API
-# La tabla de contratados vive en la hoja "AUX2" del mismo Google Sheets.
+# La tabla de contratados vive en la hoja "AUX3" del mismo Google Sheets.
 
 # --- MAPEO DE GÉNERO PARA UNIDADES ---
 # Esto define si el estado termina en "O" (Masculino) o "A" (Femenino)
@@ -39,11 +39,12 @@ def load_data():
         return pd.DataFrame()
         
     data.columns = data.columns.str.strip().str.upper()
+    data = data.loc[:, ~data.columns.duplicated()].copy() # Evitar duplicados por normalización
     if 'EX' in data.columns:
         data['EX'] = data['EX'].fillna('').astype(str).str.replace('.0', '', regex=False)
     for col in ['TIPO', 'ESTADO', 'ÁREA']:
         if col in data.columns:
-            data[col] = data[col].fillna('').str.strip().str.upper()
+            data[col] = data[col].fillna('').astype(str).str.strip().str.upper()
     return data.fillna("")
 
 def obtener_terminacion(tipo):
@@ -56,11 +57,12 @@ def load_data_contratados():
             scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
             creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
             client = gspread.authorize(creds)
-            sheet_c = client.open_by_key(st.secrets["spreadsheet_id"]).worksheet("AUX2")
+            sheet_c = client.open_by_key(st.secrets["spreadsheet_id"]).worksheet("AUX3")
             df_c = pd.DataFrame(sheet_c.get_all_records())
             if df_c.empty:
                 return pd.DataFrame(columns=['TIPO_C', 'AREA_C', 'CANTIDAD_C'])
             df_c.columns = df_c.columns.str.strip().str.upper()
+            df_c = df_c.loc[:, ~df_c.columns.duplicated()].copy() # Evitar duplicados iniciales
             # Renombrar si las columnas no tienen sufijo _C
             col_map = {}
             for c in df_c.columns:
@@ -71,6 +73,7 @@ def load_data_contratados():
                 elif c in ('CANTIDAD', 'CANTIDAD_C'):
                     col_map[c] = 'CANTIDAD_C'
             df_c = df_c.rename(columns=col_map)
+            df_c = df_c.loc[:, ~df_c.columns.duplicated()].copy() # Evitar duplicados tras rename (ej: TIPO y TIPO_C)
             if not all(col in df_c.columns for col in ['TIPO_C', 'AREA_C', 'CANTIDAD_C']):
                 st.warning("La hoja AUX2 no tiene las columnas esperadas (TIPO_C, AREA_C, CANTIDAD_C).")
                 return pd.DataFrame(columns=['TIPO_C', 'AREA_C', 'CANTIDAD_C'])
@@ -79,7 +82,7 @@ def load_data_contratados():
             df_c['CANTIDAD_C'] = pd.to_numeric(df_c['CANTIDAD_C'], errors='coerce').fillna(0).astype(int)
             return df_c[['TIPO_C', 'AREA_C', 'CANTIDAD_C']]
     except Exception as e:
-        st.warning(f"No se pudo cargar la tabla de contratados (AUX2): {e}")
+        st.warning(f"No se pudo cargar la tabla de contratados (AUX3): {e}")
     return pd.DataFrame(columns=['TIPO_C', 'AREA_C', 'CANTIDAD_C'])
 
 def pluralizar_palabra(palabra):
