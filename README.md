@@ -1,66 +1,81 @@
-# 🚜 Generador de Reportes de Flota - Varela Pro
+# 🚜 Flota Varela - Sistema de Gestión de Reportes
 
-Este proyecto es una aplicación web interactiva desarrollada con **Streamlit** diseñada para la gestión y generación de reportes de estado de flota vehicular y maquinaria pesada. La aplicación consume datos en tiempo real desde una hoja de cálculo de Google Sheets y permite generar informes formateados listos para ser compartidos vía WhatsApp.
+Este proyecto es una aplicación web interactiva desarrollada con **Streamlit**, diseñada para la gestión centralizada y la generación de reportes de estado de la flota vehicular y maquinaria pesada municipal.
+
+La aplicación se sincroniza en tiempo real con una base de datos en **Google Sheets**, permitiendo a los operadores generar informes detallados y formateados listos para ser compartidos vía WhatsApp de manera instantánea.
+
+---
 
 ## 🚀 Características Principales
 
-- **Sincronización en Tiempo Real:** Carga datos directamente desde un CSV público de Google Sheets.
-- **Filtros Avanzados:** 
-  - Filtrado por tipo de unidad (Aplanadoras, Camionetas, Excavadoras, etc.).
-  - Filtrado por área (Servicios Públicos, Ambiente, Secretaría, Arquitectura).
-  - Filtrado por estado operativo (Activos, Inactivos).
-- **Concordancia Gramatical Automática:** El sistema detecta si la unidad es femenina o masculina para ajustar el texto del reporte (ej: "Operativo" vs "Operativa").
-- **Generación de Reportes para WhatsApp:** Crea un resumen detallado con emojis, separando las unidades por área y detallando su diagnóstico.
-- **Copiado Rápido:** Incluye un botón interactivo para copiar el reporte final al portapapeles con un solo clic.
+*   **Sincronización con Google Sheets:** Conexión segura mediante API (gspread) para lectura y escritura de datos.
+*   **Filtros Inteligentes:** 
+    *   **Multiselección de Unidades:** Permite agrupar diferentes tipos de vehículos (Camionetas, Excavadoras, etc.) en un solo reporte.
+    *   **Filtrado por Área:** Segmentación por Servicios Públicos, Ambiente, Secretaría, Arquitectura, etc.
+    *   **Estado Operativo:** Filtrado rápido de unidades Activas o Inactivas.
+*   **Concordancia Gramatical AI-Ready:** El sistema detecta automáticamente el género de la unidad para ajustar el texto del reporte (ej: "Operativ**o**" vs "Operativ**a**").
+*   **Historial de Reportes:** Cada informe generado se guarda automáticamente en una pestaña de "Historial" en la hoja de cálculo, incluyendo fecha, filtros aplicados y el contenido del reporte.
+*   **Copiado One-Click:** Interfaz optimizada con botones interactivos para copiar el reporte final al portapapeles.
+
+---
 
 ## 🛠️ Requisitos e Instalación
 
-### Requisitos Previos
-Asegúrate de tener instalado Python 3.8 o superior.
+### 1. Requisitos Previos
+*   Python 3.9 o superior.
+*   Una cuenta de Google Cloud con la API de Google Sheets y Drive activada.
+*   Un archivo de credenciales de Service Account.
 
-### Instalación Local
-Instala las bibliotecas necesarias utilizando el archivo `requirements.txt`:
+### 2. Instalación Local
+Clona el repositorio y ejecuta:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Las dependencias principales son:
-- `streamlit`
-- `pandas`
+### 3. Configuración de Secretos (`.streamlit/secrets.toml`)
+Para que la aplicación funcione, debes crear un archivo `.streamlit/secrets.toml` con la siguiente estructura:
 
-### Uso con Dev Containers (VS Code)
-Este proyecto incluye una configuración de `.devcontainer`. Si utilizas VS Code con la extensión "Dev Containers" o GitHub Codespaces:
-1. Abre la carpeta en el contenedor.
-2. Las dependencias se instalarán automáticamente.
-3. La aplicación se ejecutará automáticamente y estará disponible en el puerto 8501.
+```toml
+spreadsheet_id = "TU_ID_DE_HOJA_DE_CALCULO"
+
+[gcp_service_account]
+type = "service_account"
+project_id = "tu-proyecto"
+private_key_id = "tu-key-id"
+private_key = "-----BEGIN PRIVATE KEY-----\n..."
+client_email = "tu-email@serviceaccount.com"
+client_id = "..."
+# ... resto de campos del JSON de Google ...
+```
+
+---
 
 ## 📖 Instrucciones de Uso
 
-1. **Ejecutar la aplicación:**
-   Abre una terminal en la carpeta del proyecto y ejecuta:
-   ```bash
-   streamlit run aply2.py
-   ```
+1.  **Lanzar la App:**
+    ```bash
+    streamlit run aply.py
+    ```
+2.  **Configurar Filtros:**
+    *   Selecciona los **Tipos de Unidad**.
+    *   Define el **Área** y el **Estado** (Activos/Inactivos).
+3.  **Generar y Enviar:**
+    *   Haz clic en **"Generar Informe para WhatsApp 📋"**.
+    *   Verifica el log de éxito (se guardará en el Historial).
+    *   Presiona **"Copiar al Portapapeles 📋"** y pega el texto en WhatsApp.
 
-2. **Configurar Filtros:**
-   - Selecciona el **Tipo de Unidad** que deseas reportar.
-   - Selecciona el **Área** específica o deja en "TODAS".
-   - Elige si quieres ver solo los **Activos**, **Inactivos** o el listado completo.
-
-3. **Generar Informe:**
-   - Haz clic en el botón **"Generar Informe para WhatsApp 📋"**.
-   - Revisa el texto generado en el área de previsualización.
-
-4. **Copiar y Compartir:**
-   - Presiona el botón verde **"Copiar al Portapapeles 📋"**.
-   - Pega el contenido directamente en un chat de WhatsApp o cualquier otro medio de comunicación.
+---
 
 ## 📁 Estructura del Proyecto
 
-- `aply2.py`: Script principal de la aplicación.
-- `requirements.txt`: Lista de dependencias del proyecto.
-- `aply.py`: Versión alternativa/respaldo del script principal.
+*   `aply.py`: **Script principal** con integración de GSheets y logging.
+*   `aply22.py`: Versión de respaldo (Legacy) basada en CSV público.
+*   `requirements.txt`: Dependencias del sistema (streamlit, pandas, gspread, etc.).
+*   `.streamlit/`: Configuración y secretos locales.
 
 ---
-*Desarrollado para la gestión eficiente de la flota municipal.*
+
+> [!NOTE]
+> Desarrollado para optimizar la comunicación operativa de la flota municipal de Florencio Varela.
+
