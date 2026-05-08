@@ -112,24 +112,55 @@ def pluralizar(texto):
     palabras = texto.split()
     return " ".join([pluralizar_palabra(p) for p in palabras])
 
-# --- CONFIGURACIÓN GEMINI (Nueva SDK google-genai) ---
-def ask_gemini(prompt, system_instruction=""):
+# --- CONFIGURACIÓN GEMINI (SDK google-genai 2026) ---
+import time
+import random
+from typing import Optional
+
+def ask_gemini(prompt: str, system_instruction: str = "", model_name: str = "gemini-3.1-flash-lite") -> str:
     if "GEMINI_API_KEY" not in st.secrets:
-        return "Error: GEMINI_API_KEY no configurada."
-    try:
-        client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"], http_options={'api_version': 'v1'})
-        response = client.models.generate_content(
-            model="gemini-3.1-flash-lite",
-            contents=prompt,
-            config={
-                "system_instruction": system_instruction,
-                "thinking_config": {"thinking_level": "medium"},
-                "temperature": 0.2
-            }
+        return "Error: API Key no configurada."
+    
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    config = {
+        "system_instruction": system_instruction,
+        "thinking_config": {"thinking_level": "minimal"},
+        "temperature": 0.1,
+    }
+
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(model=model_name, contents=prompt, config=config)
+            return response.text
+        except Exception as e:
+            err = str(e)
+            if "429" in err: # Rate Limit (15 RPM)
+                time.sleep((2 ** attempt) + random.uniform(0, 1))
+                continue
+            if "404" in err and model_name != "gemini-2.5-flash":
+                return ask_gemini(prompt, system_instruction, model_name="gemini-2.5-flash")
+            return f"Error en API: {e}"
+    return "Error: Límite de reintentos (429) excedido."
+
+def clean_fleet_context(df: pd.DataFrame) -> str:
+    """Optimiza tokens mapeando columnas críticas y validando estados."""
+    mapping = {'UNIDAD': 'ID_UNIDAD', 'ESTADO': 'ESTADO', 'TIPO': 'TIPO_MAQUINARIA', 'ULTIMA_REV': 'ULTIMA_REV'}
+    cols = [c for c in mapping.keys() if c in df.columns]
+    df_mini = df[cols].rename(columns={k: v for k, v in mapping.items() if k in df.columns}).copy()
+    
+    # Validador estricto INACTIVO vs ACTIVO
+    if 'ESTADO' in df_mini.columns:
+        df_mini['ESTADO'] = df_mini['ESTADO'].apply(
+            lambda x: "INACTIVO" if "INACTIVO" in str(x).upper() else ("ACTIVO" if "ACTIVO" in str(x).upper() else x)
         )
-        return response.text
-    except Exception as e:
-        return f"Error en Gemini: {e}"
+    return df_mini.to_markdown(index=False)
+
+def get_resumen_ejecutivo(df: pd.DataFrame) -> str:
+    """Agrupa unidades por estado crítico en una sola llamada."""
+    ctx = clean_fleet_context(df)
+    sys_ins = "Eres un analista de flota. Responde solo con una tabla Markdown JSON compacto. Sin prosa introductoria."
+    prompt = f"Genera un resumen ejecutivo agrupando unidades por estado crítico:\n\n{ctx}"
+    return ask_gemini(prompt, system_instruction=sys_ins)
 
 # --- HELPERS GSHEETS ---
 def get_gsheet_client():
@@ -407,17 +438,23 @@ try:
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
 
-            if prompt := st.chat_input("Pregunta sobre la flota (ej: ¿Qué unidad está próxima a salir?)"):
+            if prompt := st.chat_input("Pregunta sobre la flota..."):
                 st.session_state.messages.append({"role": "user", "content": prompt})
                 with st.chat_message("user"):
                     st.markdown(prompt)
 
                 with st.chat_message("assistant"):
-                    # Contexto del sistema con el DataFrame
-                    system_ctx = f"Eres un asistente de gestión de flota municipal. Aquí tienes el estado actual de la flota en formato string:\n\n{df.to_string()}\n\nResponde de forma concisa y profesional."
-                    response = ask_gemini(prompt, system_instruction=system_ctx)
+                    # Uso de contexto optimizado y system_instruction predefinida
+                    ctx = clean_fleet_context(df)
+                    sys_ins = "Eres un asistente de flota. Responde con tablas Markdown si es posible. No uses prosa innecesaria."
+                    response = ask_gemini(f"Contexto:\n{ctx}\n\nPregunta: {prompt}", system_instruction=sys_ins)
                     st.markdown(response)
                 st.session_state.messages.append({"role": "assistant", "content": response})
+
+            if st.button("📊 Generar Resumen Ejecutivo"):
+                with st.spinner("Analizando flota..."):
+                    resumen = get_resumen_ejecutivo(df)
+                    st.markdown(resumen)
 
         # --- COLUMNA DERECHA: SEGUIMIENTO ACTIVO ---
         with col_tracking:
