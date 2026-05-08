@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 aply22.py
 .env
+flask_app.py
+package-lock.json
