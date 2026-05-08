@@ -4,7 +4,7 @@ from datetime import datetime
 import streamlit.components.v1 as components
 import gspread
 from google.oauth2.service_account import Credentials
-import google.generativeai as genai
+from google import genai
 
 st.set_page_config(
     page_title="Flota Varela",
@@ -112,16 +112,21 @@ def pluralizar(texto):
     palabras = texto.split()
     return " ".join([pluralizar_palabra(p) for p in palabras])
 
-# --- CONFIGURACIÓN GEMINI ---
-if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-else:
-    st.warning("GEMINI_API_KEY no encontrada en st.secrets.")
-
+# --- CONFIGURACIÓN GEMINI (Nueva SDK google-genai) ---
 def ask_gemini(prompt, system_instruction=""):
+    if "GEMINI_API_KEY" not in st.secrets:
+        return "Error: GEMINI_API_KEY no configurada."
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=system_instruction)
-        response = model.generate_content(prompt)
+        client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"], http_options={'api_version': 'v1'})
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-lite",
+            contents=prompt,
+            config={
+                "system_instruction": system_instruction,
+                "thinking_config": {"thinking_level": "medium"},
+                "temperature": 0.2
+            }
+        )
         return response.text
     except Exception as e:
         return f"Error en Gemini: {e}"
