@@ -4,6 +4,7 @@ from datetime import datetime
 import streamlit.components.v1 as components
 import gspread
 from google.oauth2.service_account import Credentials
+import google.generativeai as genai
 
 st.set_page_config(
     page_title="Flota Varela",
@@ -111,6 +112,44 @@ def pluralizar(texto):
     palabras = texto.split()
     return " ".join([pluralizar_palabra(p) for p in palabras])
 
+# --- CONFIGURACIÓN GEMINI ---
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+else:
+    st.warning("GEMINI_API_KEY no encontrada en st.secrets.")
+
+def ask_gemini(prompt, system_instruction=""):
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=system_instruction)
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Error en Gemini: {e}"
+
+# --- HELPERS GSHEETS ---
+def get_gsheet_client():
+    if "gcp_service_account" in st.secrets:
+        scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+        creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
+        return gspread.authorize(creds)
+    return None
+
+def update_diagnostico_sheet(unidad, nuevo_diagnostico):
+    try:
+        client = get_gsheet_client()
+        if client and "spreadsheet_id" in st.secrets:
+            sheet = client.open_by_key(st.secrets["spreadsheet_id"]).worksheet("AUX2")
+            cell = sheet.find(unidad)
+            if cell:
+                headers = sheet.row_values(1)
+                diag_col = next((i + 1 for i, h in enumerate(headers) if h.upper().strip() == "DIAGNÓSTICO"), None)
+                if diag_col:
+                    sheet.update_cell(cell.row, diag_col, nuevo_diagnostico)
+                    return True
+    except Exception as e:
+        st.error(f"Error al actualizar GSheets: {e}")
+    return False
+
 # --- INTERFAZ ---
 st.title("🚜 Generador de Reportes de Flota")
 
@@ -118,7 +157,7 @@ try:
     df = load_data()
     df_contratados = load_data_contratados()
     
-    tab1, tab2 = st.tabs(["Reporte Individual", "Parte Diario"])
+    tab1, tab2, tab3 = st.tabs(["Reporte Individual", "Parte Diario", "Ida y Vuelta"])
     
     with tab1:
         # --- SELECTORES DE FILTRADO ---
@@ -339,6 +378,88 @@ try:
                 </script>
                 """
                 components.html(copy_js_diario, height=70)
+
+    with tab3:
+        st.markdown("## 🔄 Ida y Vuelta: Centro de Control Inteligente")
+        
+        # Filtrar unidades inactivas (excluyendo delegaciones para consistencia)
+        df_inactivas = df[
+            (df['ESTADO'].isin(['INACTIVO', 'INACTIVA'])) & 
+            (~df['ÁREA'].str.contains("DELEGACI", na=False))
+        ].copy() if not df.empty else pd.DataFrame()
+
+        col_chat, col_tracking = st.columns([1.5, 1])
+
+        # --- COLUMNA IZQUIERDA: CHATBOT ---
+        with col_chat:
+            st.markdown("### 💬 Chat de Flota")
+            
+            if "messages" not in st.session_state:
+                st.session_state.messages = []
+
+            # Mostrar historial
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+
+            if prompt := st.chat_input("Pregunta sobre la flota (ej: ¿Qué unidad está próxima a salir?)"):
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+
+                with st.chat_message("assistant"):
+                    # Contexto del sistema con el DataFrame
+                    system_ctx = f"Eres un asistente de gestión de flota municipal. Aquí tienes el estado actual de la flota en formato string:\n\n{df.to_string()}\n\nResponde de forma concisa y profesional."
+                    response = ask_gemini(prompt, system_instruction=system_ctx)
+                    st.markdown(response)
+                st.session_state.messages.append({"role": "assistant", "content": response})
+
+        # --- COLUMNA DERECHA: SEGUIMIENTO ACTIVO ---
+        with col_tracking:
+            st.markdown("### 📋 Seguimiento de Inactivos")
+            
+            if df_inactivas.empty:
+                st.info("No hay unidades inactivas fuera de delegaciones.")
+            else:
+                for _, row in df_inactivas.iterrows():
+                    unidad = row['UNIDAD']
+                    diag_actual = row.get('DIAGNÓSTICO', 'Sin diagnóstico')
+                    tipo = row['TIPO']
+                    
+                    with st.expander(f"📍 {unidad} ({tipo})"):
+                        st.write(f"**Diagnóstico actual:** {diag_actual}")
+                        
+                        # Generar pregunta orgánica si no existe en session_state
+                        q_key = f"q_{unidad}"
+                        if q_key not in st.session_state:
+                            prompt_q = f"Basado en este diagnóstico: '{diag_actual}', genera una pregunta corta y orgánica para el operario para saber el avance de la reparación de la unidad {unidad}."
+                            st.session_state[q_key] = ask_gemini(prompt_q, "Eres un supervisor de taller amable.")
+                        
+                        st.info(st.session_state[q_key])
+                        
+                        # Input de respuesta del operario
+                        ans_key = f"ans_{unidad}"
+                        resp_user = st.text_input("Respuesta del operario:", key=ans_key)
+                        
+                        if resp_user:
+                            # Sugerir redacción profesional
+                            sug_key = f"sug_{unidad}"
+                            if sug_key not in st.session_state or st.session_state.get(f"last_ans_{unidad}") != resp_user:
+                                prompt_s = f"El operario dice: '{resp_user}'. Redacta una versión profesional y técnica para el campo 'DIAGNÓSTICO' del reporte de flota para la unidad {unidad}. Sé breve."
+                                st.session_state[sug_key] = ask_gemini(prompt_s, "Eres un redactor técnico de flota municipal.")
+                                st.session_state[f"last_ans_{unidad}"] = resp_user
+                            
+                            # Previsualización y edición
+                            nuevo_diag = st.text_area("Sugerencia técnica (puedes editarla):", value=st.session_state[sug_key], key=f"ta_{unidad}")
+                            
+                            if st.button(f"Confirmar {unidad}", key=f"btn_{unidad}"):
+                                with st.spinner(f"Actualizando {unidad}..."):
+                                    if update_diagnostico_sheet(unidad, nuevo_diag):
+                                        st.success(f"¡{unidad} actualizada!")
+                                        st.cache_data.clear() # Limpiar cache para forzar recarga
+                                        st.rerun()
+                                    else:
+                                        st.error("No se pudo actualizar la hoja.")
 
 except Exception as e:
     st.error(f"Error en la aplicación: {e}")
