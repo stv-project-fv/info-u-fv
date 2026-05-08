@@ -112,6 +112,21 @@ def pluralizar(texto):
     palabras = texto.split()
     return " ".join([pluralizar_palabra(p) for p in palabras])
 
+def format_totales(tipo, cant_p, cant_c):
+    sufijo = "A" if tipo.upper() in UNIDADES_FEMENINAS else "O"
+    parts = []
+    if cant_p > 0:
+        word = f"PROPI{sufijo}"
+        if cant_p > 1: word += "S"
+        parts.append(f"{cant_p} {word}")
+    if cant_c > 0:
+        word = f"CONTRATAD{sufijo}"
+        if cant_c > 1: word += "S"
+        parts.append(f"{cant_c} {word}")
+    
+    if not parts: return ""
+    return " - (" + " + ".join(parts) + ")"
+
 # --- CONFIGURACIÓN GEMINI (SDK google-genai 2026) ---
 import time
 import random
@@ -162,6 +177,20 @@ def get_resumen_ejecutivo(df: pd.DataFrame) -> str:
     prompt = f"Genera un resumen ejecutivo agrupando unidades por estado crítico:\n\n{ctx}"
     return ask_gemini(prompt, system_instruction=sys_ins)
 
+def get_fleet_proposals(df_inactivas: pd.DataFrame) -> str:
+    """Genera propuestas y consultas para todas las unidades inactivas en una sola petición."""
+    if df_inactivas.empty:
+        return "No hay unidades inactivas para analizar."
+    
+    ctx = clean_fleet_context(df_inactivas)
+    sys_ins = (
+        "Eres un supervisor de taller experto. Analiza el estado de las unidades inactivas y propón "
+        "acciones concretas o preguntas clave para agilizar la reparación. "
+        "Responde con un formato de lista claro, ideal para leer rápidamente en WhatsApp."
+    )
+    prompt = f"Analiza estas unidades inactivas y dame propuestas o recordatorios de intervención:\n\n{ctx}"
+    return ask_gemini(prompt, system_instruction=sys_ins)
+
 # --- HELPERS GSHEETS ---
 def get_gsheet_client():
     if "gcp_service_account" in st.secrets:
@@ -193,7 +222,7 @@ try:
     df = load_data()
     df_contratados = load_data_contratados()
     
-    tab1, tab2, tab3 = st.tabs(["Reporte Individual", "Parte Diario", "Ida y Vuelta"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Reporte Individual", "Parte Diario", "Ida y Vuelta", "Seguimiento"])
     
     with tab1:
         # --- SELECTORES DE FILTRADO ---
@@ -327,7 +356,11 @@ try:
         tipos_unificados = sorted(list(tipos_propios.union(tipos_contra)))
         tipos_unificados = [t for t in tipos_unificados if str(t).strip() != ""]
 
-        tipo_sel_diario = st.multiselect("Seleccionar Tipos de Unidad:", tipos_unificados, default=[], key="ms_diario")
+        col_d1, col_d2 = st.columns([3, 1])
+        with col_d1:
+            tipo_sel_diario = st.multiselect("Seleccionar Tipos de Unidad:", tipos_unificados, default=[], key="ms_diario")
+        with col_d2:
+            resumen_ia = st.checkbox("Resumen ✨", value=False, help="Usa IA para resumir diagnósticos de unidades inactivas.")
 
         if st.button('Generar Parte Diario 📋'):
             if not tipo_sel_diario:
@@ -355,7 +388,9 @@ try:
                     total_operativos = cant_propios + cant_contratados
                     tipo_plural = pluralizar(tipo).upper()
                     
-                    reporte_diario += f"*{total_operativos} {tipo_plural}* - ({cant_propios} Propios + {cant_contratados} Contratados)\n"
+                    # Punto 2, 3 y 4: Formato condicional y concordancia
+                    txt_totales = format_totales(tipo, cant_propios, cant_contratados)
+                    reporte_diario += f"*{total_operativos} {tipo_plural}*{txt_totales}\n"
                     
                     # AREAS
                     areas_p = df_p_op['ÁREA'].value_counts().to_dict() if not df_p_op.empty and 'ÁREA' in df_p_op.columns else {}
@@ -367,7 +402,37 @@ try:
                     for a in todas_areas:
                         tot_a = areas_p.get(a, 0) + areas_c.get(a, 0)
                         if tot_a > 0:
-                            reporte_diario += f"* {tot_a} en {a}\n"
+                            reporte_diario += f"• {tot_a} en {a}\n" # Cambiado a viñeta redonda como en el ejemplo
+                    
+                    # Punto 1: Unidades inactivas bajo cada tipo
+                    df_p_inact = df_diario[
+                        (df_diario['TIPO'] == tipo) & 
+                        (df_diario['ESTADO'].isin(['INACTIVO', 'INACTIVA', 'IRRECUPERABLE']))
+                    ]
+                    
+                    if not df_p_inact.empty:
+                        reporte_diario += "\n"
+                        if resumen_ia:
+                            # Preparar contexto para IA
+                            lista_inact = ""
+                            for _, r in df_p_inact.iterrows():
+                                ex_val = str(r.get('EX', '')).strip()
+                                nombre_ex = f" (ex {ex_val})" if ex_val != "" and ex_val.lower() != "nan" else ""
+                                lista_inact += f"- {r['UNIDAD']}{nombre_ex} ({r.get('ÁREA', '')}): {r.get('DIAGNÓSTICO', '')}\n"
+                            
+                            sys_ins = "Eres un supervisor de taller. Resume diagnósticos de forma extremadamente concisa (máximo 10 palabras por unidad). Mantén ID y Área. Usa el emoji 🔺."
+                            prompt = f"Resume estas unidades inactivas para un reporte de WhatsApp:\n\n{lista_inact}"
+                            resumen = ask_gemini(prompt, system_instruction=sys_ins)
+                            reporte_diario += resumen + "\n"
+                        else:
+                            for _, row in df_p_inact.iterrows():
+                                est = str(row['ESTADO']).upper()
+                                emoji_nov = "❌" if est == "IRRECUPERABLE" else "🔺"
+                                ex_val = str(row.get('EX', '')).strip()
+                                nombre_ex = f" (ex {ex_val})" if ex_val != "" and ex_val.lower() != "nan" else ""
+                                diag = row.get('DIAGNÓSTICO', '')
+                                area_str = str(row.get('ÁREA', ''))
+                                reporte_diario += f"- *{row['UNIDAD']}*{nombre_ex} ({area_str}) {emoji_nov} {diag}\n"
                     
                     reporte_diario += "\n"
 
@@ -380,7 +445,7 @@ try:
                     ]
                 
                 if not df_novedades.empty:
-                    reporte_diario += "*NOVEDADES:*\n"
+                    reporte_diario += "DETALLE DE INACTIVOS:\n"
                     for _, row in df_novedades.iterrows():
                         est = str(row['ESTADO']).upper()
                         emoji_nov = "❌" if est == "IRRECUPERABLE" else "🔺"
@@ -388,7 +453,7 @@ try:
                         nombre_ex = f" (ex {ex_val})" if ex_val != "" and ex_val.lower() != "nan" else ""
                         diag = row.get('DIAGNÓSTICO', '')
                         area_str = str(row.get('ÁREA', ''))
-                        reporte_diario += f"- *{row['UNIDAD']}*{nombre_ex} ({area_str}) {emoji_nov} {est}: {diag}\n"
+                        reporte_diario += f"- *{row['UNIDAD']}*{nombre_ex} ({area_str}) {emoji_nov} {diag}\n"
 
                 # Renderizado
                 st.markdown("### Parte Diario Generado:")
@@ -456,52 +521,67 @@ try:
                     resumen = get_resumen_ejecutivo(df)
                     st.markdown(resumen)
 
-        # --- COLUMNA DERECHA: SEGUIMIENTO ACTIVO ---
+        # --- COLUMNA DERECHA: SEGUIMIENTO ACTIVO (PROPUESTAS) ---
         with col_tracking:
-            st.markdown("### 📋 Seguimiento de Inactivos")
+            st.markdown("### 📋 Propuestas")
             
             if df_inactivas.empty:
                 st.info("No hay unidades inactivas fuera de delegaciones.")
             else:
-                for _, row in df_inactivas.iterrows():
-                    unidad = row['UNIDAD']
-                    diag_actual = row.get('DIAGNÓSTICO', 'Sin diagnóstico')
-                    tipo = row['TIPO']
-                    
-                    with st.expander(f"📍 {unidad} ({tipo})"):
-                        st.write(f"**Diagnóstico actual:** {diag_actual}")
-                        
-                        # Generar pregunta orgánica si no existe en session_state
-                        q_key = f"q_{unidad}"
-                        if q_key not in st.session_state:
-                            prompt_q = f"Basado en este diagnóstico: '{diag_actual}', genera una pregunta corta y orgánica para el operario para saber el avance de la reparación de la unidad {unidad}."
-                            st.session_state[q_key] = ask_gemini(prompt_q, "Eres un supervisor de taller amable.")
-                        
-                        st.info(st.session_state[q_key])
-                        
-                        # Input de respuesta del operario
-                        ans_key = f"ans_{unidad}"
-                        resp_user = st.text_input("Respuesta del operario:", key=ans_key)
-                        
-                        if resp_user:
-                            # Sugerir redacción profesional
-                            sug_key = f"sug_{unidad}"
-                            if sug_key not in st.session_state or st.session_state.get(f"last_ans_{unidad}") != resp_user:
-                                prompt_s = f"El operario dice: '{resp_user}'. Redacta una versión profesional y técnica para el campo 'DIAGNÓSTICO' del reporte de flota para la unidad {unidad}. Sé breve."
-                                st.session_state[sug_key] = ask_gemini(prompt_s, "Eres un redactor técnico de flota municipal.")
-                                st.session_state[f"last_ans_{unidad}"] = resp_user
-                            
-                            # Previsualización y edición
-                            nuevo_diag = st.text_area("Sugerencia técnica (puedes editarla):", value=st.session_state[sug_key], key=f"ta_{unidad}")
-                            
-                            if st.button(f"Confirmar {unidad}", key=f"btn_{unidad}"):
-                                with st.spinner(f"Actualizando {unidad}..."):
-                                    if update_diagnostico_sheet(unidad, nuevo_diag):
-                                        st.success(f"¡{unidad} actualizada!")
-                                        st.cache_data.clear() # Limpiar cache para forzar recarga
+                if st.button("Solicitar ✨", key="btn_gen_prop"):
+                    with st.spinner("Gemini analizando la flota inactiva..."):
+                        propuestas = get_fleet_proposals(df_inactivas)
+                        st.markdown(propuestas)
+                
+                st.divider()
+                st.caption("Usa la pestaña 'Seguimiento' para actualizar diagnósticos rápidamente.")
+
+    with tab4:
+        st.markdown("## 📝 Seguimiento Manual de Diagnósticos")
+        
+        # Filtro de búsqueda opcional para no saturar la vista
+        search_seg = st.text_input("🔍 Buscar unidad por ID o diagnóstico:", "").upper()
+        
+        df_seg = df[~df['ÁREA'].str.contains("DELEGACI", na=False)].copy()
+        if search_seg:
+            df_seg = df_seg[
+                df_seg['UNIDAD'].str.contains(search_seg, na=False) | 
+                df_seg['DIAGNÓSTICO'].str.contains(search_seg, na=False)
+            ]
+
+        if df_seg.empty:
+            st.info("No se encontraron unidades.")
+        else:
+            # Encabezados
+            h1, h2, h3 = st.columns([1.5, 2, 1])
+            h1.markdown("**Unidad (Actual)**")
+            h2.markdown("**Actualizado**")
+            h3.markdown("**Acción**")
+            
+            for _, row in df_seg.iterrows():
+                u = row['UNIDAD']
+                diag_actual = row.get('DIAGNÓSTICO', '')
+                
+                with st.container():
+                    c1, c2, c3 = st.columns([1.5, 2, 1])
+                    with c1:
+                        st.markdown(f"**{u}**")
+                        st.caption(diag_actual if diag_actual else "Sin diagnóstico")
+                    with c2:
+                        new_diag = st.text_input(f"Nuevo para {u}", key=f"inp_{u}", label_visibility="collapsed", placeholder="Escribe el avance...")
+                    with c3:
+                        if st.button("CONFIRMAR", key=f"btn_upd_{u}", use_container_width=True):
+                            if new_diag.strip():
+                                with st.spinner("..."):
+                                    if update_diagnostico_sheet(u, new_diag):
+                                        st.success("✔")
+                                        st.cache_data.clear()
                                         st.rerun()
                                     else:
-                                        st.error("No se pudo actualizar la hoja.")
+                                        st.error("Error")
+                            else:
+                                st.warning("!")
+                    st.divider()
 
 except Exception as e:
     st.error(f"Error en la aplicación: {e}")
