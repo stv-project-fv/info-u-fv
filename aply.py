@@ -221,18 +221,23 @@ def get_gsheet_client():
         return gspread.authorize(creds)
     return None
 
-def update_diagnostico_sheet(unidad, nuevo_diagnostico):
+def update_unit_data(unidad, updates):
+    """
+    Actualiza múltiples columnas en GSheets para una unidad específica.
+    'updates' es un diccionario { 'NOMBRE_COLUMNA': 'NUEVO_VALOR' }
+    """
     try:
         client = get_gsheet_client()
         if client and "spreadsheet_id" in st.secrets:
             sheet = client.open_by_key(st.secrets["spreadsheet_id"]).worksheet("AUX2")
             cell = sheet.find(unidad)
             if cell:
-                headers = sheet.row_values(1)
-                diag_col = next((i + 1 for i, h in enumerate(headers) if h.upper().strip() == "DIAGNÓSTICO"), None)
-                if diag_col:
-                    sheet.update_cell(cell.row, diag_col, nuevo_diagnostico)
-                    return True
+                headers = [h.upper().strip() for h in sheet.row_values(1)]
+                for col_name, new_value in updates.items():
+                    col_idx = next((i + 1 for i, h in enumerate(headers) if h == col_name.upper().strip()), None)
+                    if col_idx:
+                        sheet.update_cell(cell.row, col_idx, new_value)
+                return True
     except Exception as e:
         st.error(f"Error al actualizar GSheets: {e}")
     return False
@@ -670,34 +675,78 @@ try:
             st.info("No se encontraron unidades.")
         else:
             # Encabezados
-            h1, h2, h3 = st.columns([1.5, 2, 1])
+            h1, h2, h3, h4 = st.columns([1.5, 1, 1.5, 1])
             h1.markdown("**Unidad (Actual)**")
-            h2.markdown("**Actualizado**")
-            h3.markdown("**Acción**")
+            h2.markdown("**Estado**")
+            h3.markdown("**Actualizado**")
+            h4.markdown("**Acción**")
             
             for _, row in df_seg.iterrows():
                 u = row['UNIDAD']
                 diag_actual = row.get('DIAGNÓSTICO', '')
+                estado_actual = row.get('ESTADO', '').upper()
+                ex_val = str(row.get('EX', '')).strip()
+                dominio = str(row.get('DOMINIO', '')).strip()
+                
+                # Formatear ID con EX
+                id_display = f"**{u}**"
+                if ex_val and ex_val.lower() != "nan":
+                    id_display += f" (ex {ex_val})"
+                
+                # Mapeo de estado para el selectbox
+                opciones_estado = ["ACTIVO/A", "INACTIVO/A", "IRRECUPERABLE"]
+                idx_estado = 0
+                if "INACTIVO" in estado_actual: idx_estado = 1
+                elif "IRRECUPERABLE" in estado_actual: idx_estado = 2
                 
                 with st.container():
-                    c1, c2, c3 = st.columns([1.5, 2, 1])
+                    c1, c2, c3, c4 = st.columns([1.5, 1, 1.5, 1])
                     with c1:
-                        st.markdown(f"**{u}**")
+                        st.markdown(id_display)
+                        st.caption(f"Dominio: {dominio}" if dominio and dominio.lower() != "nan" else "Sin dominio")
                         st.caption(diag_actual if diag_actual else "Sin diagnóstico")
                     with c2:
-                        new_diag = st.text_input(f"Nuevo para {u}", key=f"inp_{u}", label_visibility="collapsed", placeholder="Escribe el avance...")
+                        new_status = st.selectbox(f"Estado {u}", opciones_estado, index=idx_estado, key=f"st_{u}", label_visibility="collapsed")
                     with c3:
+                        new_diag = st.text_input(f"Nuevo para {u}", key=f"inp_{u}", label_visibility="collapsed", placeholder="Escribe el avance...")
+                    with c4:
                         if st.button("CONFIRMAR", key=f"btn_upd_{u}", use_container_width=True):
-                            if new_diag.strip():
-                                with st.spinner("..."):
-                                    if update_diagnostico_sheet(u, new_diag):
+                            with st.spinner("..."):
+                                updates = {}
+                                
+                                # Lógica de Diagnóstico (Append ++ o Remove --)
+                                final_diag = new_diag.strip()
+                                if final_diag.startswith("++"):
+                                    complemento = final_diag[2:].strip()
+                                    final_diag = f"{diag_actual} {complemento}".strip()
+                                elif final_diag.startswith("--"):
+                                    a_eliminar = final_diag[2:].strip()
+                                    if a_eliminar:
+                                        final_diag = diag_actual.replace(a_eliminar, "").replace("  ", " ").strip()
+                                    else:
+                                        final_diag = diag_actual
+                                
+                                if final_diag:
+                                    updates['DIAGNÓSTICO'] = final_diag
+                                
+                                # Lógica de Estado
+                                if new_status == "ACTIVO/A":
+                                    sufijo = obtener_terminacion(row['TIPO'])
+                                    updates['ESTADO'] = f"ACTIV{sufijo}"
+                                elif new_status == "INACTIVO/A":
+                                    sufijo = obtener_terminacion(row['TIPO'])
+                                    updates['ESTADO'] = f"INACTIV{sufijo}"
+                                else:
+                                    updates['ESTADO'] = "IRRECUPERABLE"
+                                
+                                if updates:
+                                    if update_unit_data(u, updates):
                                         st.success("✔")
                                         st.cache_data.clear()
                                         st.rerun()
                                     else:
                                         st.error("Error")
-                            else:
-                                st.warning("!")
+                            
                     st.divider()
 
 except Exception as e:
