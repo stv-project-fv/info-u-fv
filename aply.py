@@ -12,10 +12,25 @@ except ImportError:
 
 st.set_page_config(
     page_title="Flota Varela",
-    page_icon="🚜",
-    layout="centered", # 'centered' suele verse mejor en celulares que 'wide'
+    page_icon="icon-muni.ico",
+    layout="centered",
     initial_sidebar_state="collapsed",
 )
+
+# --- SINCRONIZACIÓN DE ESTADO (Para evitar parpadeos) ---
+if "ms_diario_shared" not in st.session_state:
+    st.session_state["ms_diario_shared"] = []
+if "cb_ia_shared" not in st.session_state:
+    st.session_state["cb_ia_shared"] = False
+
+def sync_filters_1():
+    st.session_state["ms_diario_shared"] = st.session_state["ms_diario_shared_1"]
+    st.session_state["cb_ia_shared"] = st.session_state["cb_ia_shared_1"]
+
+def sync_filters_2():
+    st.session_state["ms_diario_shared"] = st.session_state["ms_diario_shared_2"]
+    st.session_state["cb_ia_shared"] = st.session_state["cb_ia_shared_2"]
+
 # --- CONFIGURACIÓN ---
 # Ahora la conexión se hace a través de st.secrets["spreadsheet_id"] y API
 # La tabla de contratados vive en la hoja "AUX3" del mismo Google Sheets.
@@ -223,13 +238,19 @@ def update_diagnostico_sheet(unidad, nuevo_diagnostico):
     return False
 
 # --- INTERFAZ ---
-st.title("🚜 Generador de Reportes de Flota")
+# Logo a la izquierda, título centrado
+col_logo, col_title = st.columns([0.15, 0.85])
+with col_logo:
+    st.image("icon-muni.ico", width=100)
+    st.markdown("<br>", unsafe_allow_html=True)
+with col_title:
+    st.title("Reportes de Flota")
 
 try:
     df = load_data()
     df_contratados = load_data_contratados()
     
-    tab1, tab2, tab3, tab4 = st.tabs(["Reporte Individual", "Parte Diario", "Ida y Vuelta", "Seguimiento"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Reporte Individual", "Parte Diario", "Detalle de Inactivos", "Ida y Vuelta", "Seguimiento"])
     
     with tab1:
         # --- SELECTORES DE FILTRADO ---
@@ -338,7 +359,7 @@ try:
         df_diario = df[~df['ÁREA'].str.contains("DELEGACI", na=False)].copy() if not df.empty else df
         df_c_diario = df_contratados[~df_contratados['AREA_C'].str.contains("DELEGACI", na=False)].copy() if not df_contratados.empty else df_contratados
 
-        st.markdown("### Seleccionar tipos para el Parte Diario")
+        st.markdown("### Selección para Parte y Detalle de Inactivos")
         tipos_propios = set(df_diario['TIPO'].unique()) if not df_diario.empty and 'TIPO' in df_diario.columns else set()
         tipos_contra = set(df_c_diario['TIPO_C'].unique()) if not df_c_diario.empty and 'TIPO_C' in df_c_diario.columns else set()
         tipos_unificados = sorted(list(tipos_propios.union(tipos_contra)))
@@ -346,9 +367,22 @@ try:
 
         col_d1, col_d2 = st.columns([3, 1])
         with col_d1:
-            tipo_sel_diario = st.multiselect("Seleccionar Tipos de Unidad:", tipos_unificados, default=[], key="ms_diario")
+            tipo_sel_diario = st.multiselect(
+                "Seleccionar Tipos de Unidad:", 
+                tipos_unificados, 
+                default=st.session_state["ms_diario_shared"], 
+                key="ms_diario_shared_1",
+                on_change=sync_filters_1
+            )
+                
         with col_d2:
-            resumen_ia = st.checkbox("Resumen ✨", value=False, help="Usa IA para resumir diagnósticos de unidades inactivas.")
+            resumen_ia = st.checkbox(
+                "Resumen ✨", 
+                value=st.session_state["cb_ia_shared"], 
+                help="Usa IA para resumir diagnósticos.", 
+                key="cb_ia_shared_1",
+                on_change=sync_filters_1
+            )
 
         if st.button('Generar Parte Diario 📋'):
             if not tipo_sel_diario:
@@ -392,15 +426,15 @@ try:
                         if tot_a > 0:
                             reporte_diario += f"• {tot_a} en {a}\n" # Cambiado a viñeta redonda como en el ejemplo
                     
-                    # Punto 1: Unidades inactivas bajo cada tipo
-                    df_p_inact = df_diario[
-                        (df_diario['TIPO'] == tipo) & 
-                        (df_diario['ESTADO'].isin(['INACTIVO', 'INACTIVA', 'IRRECUPERABLE']))
-                    ]
-                    
-                    if not df_p_inact.empty:
-                        reporte_diario += "\n"
-                        if resumen_ia:
+                    # Punto 1: Unidades inactivas bajo cada tipo (SOLO SI RESUMEN IA ESTÁ ACTIVO)
+                    if resumen_ia:
+                        df_p_inact = df_diario[
+                            (df_diario['TIPO'] == tipo) & 
+                            (df_diario['ESTADO'].isin(['INACTIVO', 'INACTIVA', 'IRRECUPERABLE']))
+                        ]
+                        
+                        if not df_p_inact.empty:
+                            reporte_diario += "\n"
                             # Preparar contexto para IA
                             lista_inact = ""
                             for _, r in df_p_inact.iterrows():
@@ -412,36 +446,8 @@ try:
                             prompt = f"Resume estas unidades inactivas para un reporte de WhatsApp:\n\n{lista_inact}"
                             resumen = ask_gemini(prompt, system_instruction=sys_ins)
                             reporte_diario += resumen + "\n"
-                        else:
-                            for _, row in df_p_inact.iterrows():
-                                est = str(row['ESTADO']).upper()
-                                emoji_nov = "❌" if est == "IRRECUPERABLE" else "🔺"
-                                ex_val = str(row.get('EX', '')).strip()
-                                nombre_ex = f" (ex {ex_val})" if ex_val != "" and ex_val.lower() != "nan" else ""
-                                diag = row.get('DIAGNÓSTICO', '')
-                                area_str = str(row.get('ÁREA', ''))
-                                reporte_diario += f"- *{row['UNIDAD']}*{nombre_ex} ({area_str}) {emoji_nov} {diag}\n"
                     
                     reporte_diario += "\n"
-
-                # NOVEDADES
-                df_novedades = pd.DataFrame()
-                if not df_diario.empty and 'TIPO' in df_diario.columns:
-                    df_novedades = df_diario[
-                        (df_diario['TIPO'].isin(tipo_sel_diario)) & 
-                        (df_diario['ESTADO'].isin(['INACTIVO', 'INACTIVA', 'IRRECUPERABLE']))
-                    ]
-                
-                if not df_novedades.empty:
-                    reporte_diario += "DETALLE DE INACTIVOS:\n"
-                    for _, row in df_novedades.iterrows():
-                        est = str(row['ESTADO']).upper()
-                        emoji_nov = "❌" if est == "IRRECUPERABLE" else "🔺"
-                        ex_val = str(row.get('EX', '')).strip()
-                        nombre_ex = f" (ex {ex_val})" if ex_val != "" and ex_val.lower() != "nan" else ""
-                        diag = row.get('DIAGNÓSTICO', '')
-                        area_str = str(row.get('ÁREA', ''))
-                        reporte_diario += f"- *{row['UNIDAD']}*{nombre_ex} ({area_str}) {emoji_nov} {diag}\n"
 
                 # --- GUARDAR LOG EN GOOGLE SHEETS (Solo para Parte Diario) ---
                 if "gcp_service_account" in st.secrets and "spreadsheet_id" in st.secrets:
@@ -501,6 +507,97 @@ try:
                 components.html(copy_js_diario, height=70)
 
     with tab3:
+        # Filtrar para que NO CUENTEN las delegaciones
+        df_diario = df[~df['ÁREA'].str.contains("DELEGACI", na=False)].copy() if not df.empty else df
+        df_c_diario = df_contratados[~df_contratados['AREA_C'].str.contains("DELEGACI", na=False)].copy() if not df_contratados.empty else df_contratados
+
+        st.markdown("### Detalle de Unidades Inactivas")
+        
+        tipos_propios = set(df_diario['TIPO'].unique()) if not df_diario.empty and 'TIPO' in df_diario.columns else set()
+        tipos_contra = set(df_c_diario['TIPO_C'].unique()) if not df_c_diario.empty and 'TIPO_C' in df_c_diario.columns else set()
+        tipos_unificados = sorted(list(tipos_propios.union(tipos_contra)))
+        tipos_unificados = [t for t in tipos_unificados if str(t).strip() != ""]
+        col_i1, col_i2 = st.columns([3, 1])
+        with col_i1:
+            tipo_sel_inact = st.multiselect(
+                "Seleccionar Tipos de Unidad:", 
+                tipos_unificados, 
+                default=st.session_state["ms_diario_shared"], 
+                key="ms_diario_shared_2",
+                on_change=sync_filters_2
+            )
+
+        with col_i2:
+            resumen_ia_inact = st.checkbox(
+                "Resumen ✨", 
+                value=st.session_state["cb_ia_shared"], 
+                help="Usa IA para resumir diagnósticos.", 
+                key="cb_ia_shared_2",
+                on_change=sync_filters_2
+            )
+
+        if st.button('Generar Detalle de Inactivos 📋'):
+            tipo_sel = st.session_state.get("ms_diario_shared", [])
+            if not tipo_sel:
+                st.warning("Debe seleccionar al menos un Tipo de Unidad.")
+            else:
+                fecha_hoy = datetime.now().strftime("%d/%m/%y")
+                reporte_inactivos = f"*DETALLE DE INACTIVOS - {fecha_hoy}*\n\n"
+                
+                df_novedades = df_diario[
+                    (df_diario['TIPO'].isin(tipo_sel)) & 
+                    (df_diario['ESTADO'].isin(['INACTIVO', 'INACTIVA', 'IRRECUPERABLE']))
+                ]
+                
+                if df_novedades.empty:
+                    reporte_inactivos += "No se registraron unidades inactivas para los tipos seleccionados."
+                else:
+                    if st.session_state.get("cb_ia_shared"):
+                        lista_inact = ""
+                        for _, r in df_novedades.iterrows():
+                            ex_val = str(r.get('EX', '')).strip()
+                            nombre_ex = f" (ex {ex_val})" if ex_val != "" and ex_val.lower() != "nan" else ""
+                            lista_inact += f"- {r['UNIDAD']}{nombre_ex} ({r.get('ÁREA', '')}): {r.get('DIAGNÓSTICO', '')}\n"
+                        
+                        sys_ins = "Eres un supervisor de taller. Resume diagnósticos de forma extremadamente concisa (máximo 10 palabras por unidad). Mantén ID y Área. Usa el emoji 🔺."
+                        prompt = f"Resume estas unidades inactivas para un reporte de WhatsApp:\n\n{lista_inact}"
+                        resumen = ask_gemini(prompt, system_instruction=sys_ins)
+                        reporte_inactivos += resumen
+                    else:
+                        for _, row in df_novedades.iterrows():
+                            est = str(row['ESTADO']).upper()
+                            emoji_nov = "❌" if est == "IRRECUPERABLE" else "🔺"
+                            ex_val = str(row.get('EX', '')).strip()
+                            nombre_ex = f" (ex {ex_val})" if ex_val != "" and ex_val.lower() != "nan" else ""
+                            diag = row.get('DIAGNÓSTICO', '')
+                            area_str = str(row.get('ÁREA', ''))
+                            reporte_inactivos += f"- *{row['UNIDAD']}*{nombre_ex} ({area_str}) {emoji_nov} {diag}\n"
+
+                st.markdown("### Detalle Generado:")
+                st.text_area(label="Contenido final Inactivos", value=reporte_inactivos, height=400, key="ta_inactivos")
+                
+                copy_js_inact = f"""
+                <button onclick="copyToClipboardInact()" style="
+                    width: 100%; background-color: #28a745; color: white; border: none; 
+                    padding: 15px; border-radius: 8px; font-weight: bold; cursor: pointer;">
+                    Copiar Detalle al Portapapeles 📋
+                </button>
+                <script>
+                function copyToClipboardInact() {{
+                    const text = `{reporte_inactivos.replace('`', '\\`')}`;
+                    const el = document.createElement('textarea');
+                    el.value = text;
+                    document.body.appendChild(el);
+                    el.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(el);
+                    alert('Detalle copiado.');
+                }}
+                </script>
+                """
+                components.html(copy_js_inact, height=70)
+
+    with tab4:
         st.markdown("## 🔄 Ida y Vuelta: Centro de Control Inteligente")
         
         # Filtrar unidades inactivas (excluyendo delegaciones para consistencia)
@@ -556,7 +653,7 @@ try:
                 st.divider()
                 st.caption("Usa la pestaña 'Seguimiento' para actualizar diagnósticos rápidamente.")
 
-    with tab4:
+    with tab5:
         st.markdown("## 📝 Seguimiento Manual de Diagnósticos")
         
         # Filtro de búsqueda opcional para no saturar la vista

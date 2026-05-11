@@ -1,4 +1,4 @@
-# 🚜 Flota Varela - Sistema de Gestión de Reportes
+# Flota Varela - Sistema de Gestión de Reportes
 
 Este proyecto es una aplicación web interactiva desarrollada con **Streamlit**, diseñada para la gestión centralizada y la generación de reportes de estado de la flota vehicular y maquinaria pesada municipal.
 
