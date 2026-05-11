@@ -5,6 +5,10 @@ import streamlit.components.v1 as components
 import gspread
 from google.oauth2.service_account import Credentials
 from google import genai
+try:
+    import tabulate
+except ImportError:
+    tabulate = None
 
 st.set_page_config(
     page_title="Flota Varela",
@@ -168,7 +172,10 @@ def clean_fleet_context(df: pd.DataFrame) -> str:
         df_mini['ESTADO'] = df_mini['ESTADO'].apply(
             lambda x: "INACTIVO" if "INACTIVO" in str(x).upper() else ("ACTIVO" if "ACTIVO" in str(x).upper() else x)
         )
-    return df_mini.to_markdown(index=False)
+    if tabulate:
+        return df_mini.to_markdown(index=False)
+    else:
+        return df_mini.to_string(index=False)
 
 def get_resumen_ejecutivo(df: pd.DataFrame) -> str:
     """Agrupa unidades por estado crítico en una sola llamada."""
