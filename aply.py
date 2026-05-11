@@ -306,25 +306,6 @@ try:
                         reporte += f"\n*{area} ({activos_area} de {total_area} activos):*\n"
                         reporte += sub_df['REPORTE_TXT'].str.cat(sep='')
         
-                    # --- GUARDAR LOG EN GOOGLE SHEETS ---
-                    if "gcp_service_account" in st.secrets and "spreadsheet_id" in st.secrets:
-                        try:
-                            scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-                            creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
-                            client = gspread.authorize(creds)
-                            spreadsheet = client.open_by_key(st.secrets["spreadsheet_id"])
-                            
-                            try:
-                                worksheet_log = spreadsheet.worksheet("Historial")
-                            except gspread.exceptions.WorksheetNotFound:
-                                worksheet_log = spreadsheet.add_worksheet(title="Historial", rows="1000", cols="10")
-                                worksheet_log.append_row(["Fecha y Hora", "Tipos de Unidad", "Filtro Área", "Filtro Estado", "Total Unidades", "Activos", "Reporte Generado"])
-                            
-                            hora_actual = datetime.now().strftime("%d/%m/%y %H:%M:%S")
-                            worksheet_log.append_row([hora_actual, tipos_str, filtro_area, filtro_estado, total_u, activos_u, reporte])
-                            st.success("Log guardado exitosamente en Google Sheets ('Historial').")
-                        except Exception as ex_log:
-                            st.warning(f"No se pudo guardar el log en GSheets. Detalle: {ex_log}")
         
                     # --- RENDERIZADO Y COPIADO ---
                     st.markdown("### Informe Generado:")
@@ -461,6 +442,38 @@ try:
                         diag = row.get('DIAGNÓSTICO', '')
                         area_str = str(row.get('ÁREA', ''))
                         reporte_diario += f"- *{row['UNIDAD']}*{nombre_ex} ({area_str}) {emoji_nov} {diag}\n"
+
+                # --- GUARDAR LOG EN GOOGLE SHEETS (Solo para Parte Diario) ---
+                if "gcp_service_account" in st.secrets and "spreadsheet_id" in st.secrets:
+                    try:
+                        client = get_gsheet_client()
+                        if client:
+                            spreadsheet = client.open_by_key(st.secrets["spreadsheet_id"])
+                            try:
+                                worksheet_log = spreadsheet.worksheet("Historial")
+                            except gspread.exceptions.WorksheetNotFound:
+                                worksheet_log = spreadsheet.add_worksheet(title="Historial", rows="1000", cols="10")
+                                worksheet_log.append_row(["Fecha y Hora", "Tipos de Unidad", "Filtro Área", "Filtro Estado", "Total Unidades", "Activos", "Reporte Generado"])
+                            
+                            # Estadísticas para el log
+                            df_p_total = df_diario[df_diario['TIPO'].isin(tipo_sel_diario)]
+                            total_u_diario = len(df_p_total)
+                            activos_u_diario = len(df_p_total[df_p_total['ESTADO'].isin(['ACTIVO', 'ACTIVA'])])
+                            tipos_str_diario = ", ".join(tipo_sel_diario)
+                            
+                            hora_actual = datetime.now().strftime("%d/%m/%y %H:%M:%S")
+                            worksheet_log.append_row([
+                                hora_actual, 
+                                tipos_str_diario, 
+                                "PARTE DIARIO", 
+                                "TODOS", 
+                                total_u_diario, 
+                                activos_u_diario, 
+                                reporte_diario
+                            ])
+                            st.success("Log del Parte Diario guardado en 'Historial'.")
+                    except Exception as ex_log:
+                        st.warning(f"No se pudo guardar el log del Parte Diario. Detalle: {ex_log}")
 
                 # Renderizado
                 st.markdown("### Parte Diario Generado:")
