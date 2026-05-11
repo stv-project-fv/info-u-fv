@@ -12,6 +12,83 @@ st.set_page_config(
     layout="centered", # 'centered' suele verse mejor en celulares que 'wide'
     initial_sidebar_state="collapsed",
 )
+
+
+LOGO_URL = "https://i.ibb.co/chpfBP5X/Logo1.png"
+BANNER_PANEL_URL = "https://i.ibb.co/Fq6mSJgm/Secretar-a-de-Obras-Servicios-P-blicos-Ambiente-y-Planificaci-n-Urbana.png"
+
+# --- ESTILOS PERSONALIZADOS (CSS) ---
+st.markdown(f"""
+    <style>
+    /* Ocultar barra superior de Streamlit */
+    header {{visibility: hidden;}}
+    .main {{
+        background-color: #f0f2f6; /* Fondo gris muy claro como el modelo */
+    }}
+    
+    /* Contenedor del Banner Institucional */
+    .custom-header {{
+        background-image: url("{BANNER_PANEL_URL}");
+        background-size: cover;
+        background-position: center;
+        height: 120px;
+        display: flex;
+        align-items: center;
+        padding: 0 50px;
+        border-radius: 0 0 20px 0;
+        margin-bottom: 20px;
+        background-color: white;
+    }}
+    
+    .logo-container {{
+        background-color: white;
+        padding: 10px;
+        border-radius: 5px;
+        display: flex;
+        align-items: center;
+    }}
+
+    /* Estilo para las Tabs (Pestañas) */
+    .stTabs [data-baseweb="tab-list"] {{
+        gap: 24px;
+        background-color: transparent;
+    }}
+
+    .stTabs [data-baseweb="tab"] {{
+        height: 50px;
+        background-color: transparent;
+        border-radius: 4px 4px 0px 0px;
+        color: #666;
+        font-weight: 600;
+    }}
+
+    .stTabs [aria-selected="true"] {{
+        background-color: transparent !important;
+        color: #00b1ac !important; /* Color turquesa del modelo */
+        border-bottom: 3px solid #00b1ac !important;
+    }}
+    </style>
+    
+    <div class="custom-header">
+    </div>
+""", unsafe_allow_html=True)
+st.markdown("""
+    <style>
+    /* Estilizar los selectores */
+    div[data-baseweb="select"] > div {{
+        background-color: #e0e0e0 !important;
+        border: none !important;
+        border-radius: 10px !important;
+    }}
+    /* Estilizar el botón de generar */
+    .stButton>button {{
+        background-color: #e9e5d9 !important;
+        color: black !important;
+        border-radius: 10px !important;
+        border: 1px solid #ccc !important;
+    }}
+    </style>
+""", unsafe_allow_html=True)
 # --- CONFIGURACIÓN ---
 # Ahora la conexión se hace a través de st.secrets["spreadsheet_id"] y API
 # La tabla de contratados vive en la hoja "AUX3" del mismo Google Sheets.
@@ -216,7 +293,12 @@ def update_diagnostico_sheet(unidad, nuevo_diagnostico):
     return False
 
 # --- INTERFAZ ---
-st.title("🚜 Generador de Reportes de Flota")
+# Reemplazar st.title("🚜 Generador de Reportes de Flota") por:
+col_tit1, col_tit2 = st.columns([1, 8])
+with col_tit1:
+    st.image(LOGO_URL, width=80) # O el logo verde específico que ves en la imagen
+with col_tit2:
+    st.markdown("<h1 style='color: #1a1a1a; margin-top: 10px;'>Generador de Reportes de Flota</h1>", unsafe_allow_html=True)
 
 try:
     df = load_data()
