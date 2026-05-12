@@ -19,7 +19,11 @@ st.set_page_config(
 
 # --- SINCRONIZACIÓN DE ESTADO (Para evitar parpadeos) ---
 if "ms_diario_shared" not in st.session_state:
-    st.session_state["ms_diario_shared"] = []
+    st.session_state["ms_diario_shared"] = [
+        "MOTONIVELADORA", "CAMIÓN VOLCADOR", "RETROEXCAVADORA", 
+        "PALA CARGADORA", "CAMIÓN HIDROELEVADOR", "EXCAVADORA", 
+        "MINICARGADORA"
+    ]
 if "cb_ia_shared" not in st.session_state:
     st.session_state["cb_ia_shared"] = False
 
