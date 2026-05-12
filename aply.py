@@ -732,6 +732,27 @@ try:
                 st.caption("Usa la pestaña 'Seguimiento' para actualizar diagnósticos rápidamente.")
 
     with tab5:
+        st.markdown("""
+            <style>
+                /* Estilos para Segmented Control (Estados) */
+                /* ACTIVO/A (Verde) */
+                div[data-testid="stSegmentedControl"] div[role="radiogroup"] > div:nth-child(1) button[aria-checked="true"] {
+                    background-color: #28a745 !important;
+                    color: white !important;
+                }
+                /* INACTIVO/A (Rojo claro) */
+                div[data-testid="stSegmentedControl"] div[role="radiogroup"] > div:nth-child(2) button[aria-checked="true"] {
+                    background-color: #f8d7da !important;
+                    color: #721c24 !important;
+                }
+                /* IRRECUPERABLE (Rojo oscuro) */
+                div[data-testid="stSegmentedControl"] div[role="radiogroup"] > div:nth-child(3) button[aria-checked="true"] {
+                    background-color: #721c24 !important;
+                    color: white !important;
+                }
+            </style>
+        """, unsafe_allow_html=True)
+        
         st.markdown("## 📝 Seguimiento Manual de Diagnósticos")
         
         # Filtro de búsqueda opcional para no saturar la vista
@@ -747,13 +768,9 @@ try:
         if df_seg.empty:
             st.info("No se encontraron unidades.")
         else:
-            # Obtener opciones de estado únicas de la fuente (AUX2)
-            opciones_estado = sorted([s for s in df['ESTADO'].unique() if s])
-            if not opciones_estado:
-                opciones_estado = ["ACTIVO", "INACTIVO", "IRRECUPERABLE"]
                 
             # Encabezados
-            h1, h2, h3, h4 = st.columns([1.5, 1, 1.5, 1])
+            h1, h2, h3, h4 = st.columns([1.5, 1.5, 1.5, 1])
             h1.markdown("**Unidad (Actual)**")
             h2.markdown("**Estado**")
             h3.markdown("**Actualizado**")
@@ -771,20 +788,34 @@ try:
                 if ex_val and ex_val.lower() != "nan":
                     id_display += f" (ex {ex_val})"
                 
-                # Mapeo de estado dinámico
-                try:
-                    idx_estado = opciones_estado.index(estado_actual)
-                except ValueError:
+                # Determinar opciones de estado según género
+                tipo = row.get('TIPO', '')
+                is_femenina = tipo.upper() in UNIDADES_FEMENINAS
+                opciones_estado = ["ACTIVA", "INACTIVA", "IRRECUPERABLE"] if is_femenina else ["ACTIVO", "INACTIVO", "IRRECUPERABLE"]
+                
+                # Mapeo de estado actual al índice de las nuevas opciones
+                if estado_actual in ["ACTIVO", "ACTIVA"]:
                     idx_estado = 0
+                elif estado_actual in ["INACTIVO", "INACTIVA"]:
+                    idx_estado = 1
+                else:
+                    idx_estado = 2
                 
                 with st.container():
-                    c1, c2, c3, c4 = st.columns([1.5, 1, 1.5, 1])
+                    c1, c2, c3, c4 = st.columns([1.5, 1.5, 1.5, 1]) # Ajustamos anchos para acomodar botones
                     with c1:
                         st.markdown(id_display)
                         st.caption(f"Dominio: {dominio}" if dominio and dominio.lower() != "nan" else "Sin dominio")
                         st.caption(diag_actual if diag_actual else "Sin diagnóstico")
                     with c2:
-                        new_status = st.selectbox(f"Estado {u}", opciones_estado, index=idx_estado, key=f"st_{u}", label_visibility="collapsed")
+                        new_status = st.segmented_control(
+                            f"Estado {u}", 
+                            opciones_estado, 
+                            selection_mode="single", 
+                            default=opciones_estado[idx_estado], 
+                            key=f"st_{u}", 
+                            label_visibility="collapsed"
+                        )
                     with c3:
                         new_diag = st.text_input(f"Nuevo para {u}", key=f"inp_{u}", label_visibility="collapsed", placeholder="Escribe el avance...")
                     with c4:
