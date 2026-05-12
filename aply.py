@@ -445,20 +445,20 @@ try:
                     
                     reporte_diario += "\n"
 
-                # Punto 1: Resumen IA Consolidado (Una sola solicitud de calidad en lugar de múltiples iteraciones)
+                # Punto 1: Resumen IA Consolidado (Respetando el ORDEN de selección)
                 if resumen_ia:
-                    df_all_inact = df_diario[
-                        (df_diario['TIPO'].isin(tipo_sel_diario)) & 
-                        (df_diario['ESTADO'].isin(['INACTIVO', 'INACTIVA', 'IRRECUPERABLE']))
-                    ]
-                    
-                    if not df_all_inact.empty:
-                        lista_inact_full = ""
-                        for _, r in df_all_inact.iterrows():
+                    lista_inact_full = ""
+                    for tipo in tipo_sel_diario:
+                        df_tipo_inact = df_diario[
+                            (df_diario['TIPO'] == tipo) & 
+                            (df_diario['ESTADO'].isin(['INACTIVO', 'INACTIVA', 'IRRECUPERABLE']))
+                        ]
+                        for _, r in df_tipo_inact.iterrows():
                             ex_val = str(r.get('EX', '')).strip()
                             nombre_ex = f" (ex {ex_val})" if ex_val != "" and ex_val.lower() != "nan" else ""
-                            lista_inact_full += f"- [{r['TIPO']}] {r['UNIDAD']}{nombre_ex} ({r.get('ÁREA', '')}): {r.get('DIAGNÓSTICO', '')}\n"
-                        
+                            lista_inact_full += f"- [{tipo}] {r['UNIDAD']}{nombre_ex} ({r.get('ÁREA', '')}): {r.get('DIAGNÓSTICO', '')}\n"
+                    
+                    if lista_inact_full:
                         sys_ins = (
                             "Eres un supervisor de taller experto. Tu misión es analizar la lista de unidades inactivas y generar un resumen ejecutivo de diagnósticos "
                             "extremadamente conciso (máximo 10 palabras por unidad). Agrupa por tipo de maquinaria. Usa el emoji 🔺 para cada unidad inactiva. "
@@ -561,41 +561,64 @@ try:
             )
 
         if st.button('Generar Detalle de Inactivos 📋'):
-            tipo_sel = tipo_sel_inact # Consistencia: usar selección actual del widget
-            if not tipo_sel:
+            if not tipo_sel_inact:
                 st.warning("Debe seleccionar al menos un Tipo de Unidad.")
             else:
                 fecha_hoy = datetime.now().strftime("%d/%m/%y")
                 reporte_inactivos = f"*DETALLE DE INACTIVOS - {fecha_hoy}*\n\n"
                 
-                df_novedades = df_diario[
-                    (df_diario['TIPO'].isin(tipo_sel)) & 
-                    (df_diario['ESTADO'].isin(['INACTIVO', 'INACTIVA', 'IRRECUPERABLE']))
-                ]
+                # Construir la lista de inactivos respetando el ORDEN de selección
+                lista_inact_full = ""
+                reporte_manual_grouped = ""
+                hay_inactivos = False
                 
-                if df_novedades.empty:
-                    reporte_inactivos += "No se registraron unidades inactivas para los tipos seleccionados."
-                else:
-                    if st.session_state.get("cb_ia_shared"):
-                        lista_inact = ""
-                        for _, r in df_novedades.iterrows():
-                            ex_val = str(r.get('EX', '')).strip()
-                            nombre_ex = f" (ex {ex_val})" if ex_val != "" and ex_val.lower() != "nan" else ""
-                            lista_inact += f"- {r['UNIDAD']}{nombre_ex} ({r.get('ÁREA', '')}): {r.get('DIAGNÓSTICO', '')}\n"
+                for tipo in tipo_sel_inact:
+                    df_tipo_inact = df_diario[
+                        (df_diario['TIPO'] == tipo) & 
+                        (df_diario['ESTADO'].isin(['INACTIVO', 'INACTIVA', 'IRRECUPERABLE']))
+                    ]
+                    
+                    if not df_tipo_inact.empty:
+                        hay_inactivos = True
+                        # Para el reporte manual
+                        tipo_header = pluralizar(tipo).upper()
+                        reporte_manual_grouped += f"*{tipo_header}*\n"
                         
-                        sys_ins = "Eres un supervisor de taller. Resume diagnósticos de forma extremadamente concisa (máximo 10 palabras por unidad). Mantén ID y Área. Usa el emoji 🔺."
-                        prompt = f"Resume estas unidades inactivas para un reporte de WhatsApp:\n\n{lista_inact}"
-                        resumen = ask_gemini(prompt, system_instruction=sys_ins)
-                        reporte_inactivos += resumen
-                    else:
-                        for _, row in df_novedades.iterrows():
+                        for _, row in df_tipo_inact.iterrows():
                             est = str(row['ESTADO']).upper()
                             emoji_nov = "❌" if est == "IRRECUPERABLE" else "🔺"
                             ex_val = str(row.get('EX', '')).strip()
                             nombre_ex = f" (ex {ex_val})" if ex_val != "" and ex_val.lower() != "nan" else ""
                             diag = row.get('DIAGNÓSTICO', '')
                             area_str = str(row.get('ÁREA', ''))
-                            reporte_inactivos += f"- *{row['UNIDAD']}*{nombre_ex} ({area_str}) {emoji_nov} {diag}\n"
+                            
+                            # Formato manual
+                            reporte_manual_grouped += f"- *{row['UNIDAD']}*{nombre_ex} ({area_str}) {emoji_nov} {diag}\n"
+                            
+                            # Formato para IA (si se requiere)
+                            lista_inact_full += f"- [{tipo}] {row['UNIDAD']}{nombre_ex} ({area_str}): {diag}\n"
+                        
+                        reporte_manual_grouped += "\n"
+
+                if not hay_inactivos:
+                    reporte_inactivos += "No se registraron unidades inactivas para los tipos seleccionados."
+                else:
+                    if resumen_ia_inact:
+                        sys_ins = (
+                            "Eres un supervisor de taller experto. Tu misión es analizar la lista de unidades inactivas y generar un resumen ejecutivo de diagnósticos "
+                            "extremadamente conciso (máximo 10 palabras por unidad). Agrupa por tipo de maquinaria. Usa el emoji 🔺 para cada unidad inactiva. "
+                            "No incluyas saludos ni despedidas, ve directo al grano para que sea fácil de leer en WhatsApp."
+                        )
+                        prompt = f"Analiza estas unidades inactivas y genera un resumen consolidado de novedades:\n\n{lista_inact_full}"
+                        
+                        with st.spinner("Generando resumen de novedades..."):
+                            resumen_total = ask_gemini(prompt, system_instruction=sys_ins)
+                            if resumen_total and "Error" not in resumen_total:
+                                reporte_inactivos += "*RESUMEN DE NOVEDADES*\n" + resumen_total
+                            else:
+                                reporte_inactivos += "\n*(No se pudo generar el resumen de novedades)*\n"
+                    else:
+                        reporte_inactivos += reporte_manual_grouped
 
                 st.markdown("### Detalle Generado:")
                 st.text_area(label="Contenido final Inactivos", value=reporte_inactivos, height=400, key="ta_inactivos")
@@ -620,6 +643,7 @@ try:
                 </script>
                 """
                 components.html(copy_js_inact, height=70)
+
 
     with tab4:
         st.markdown("## 🔄 Ida y Vuelta: Centro de Control Inteligente")
