@@ -734,21 +734,29 @@ try:
     with tab5:
         st.markdown("""
             <style>
-                /* Estilos para Segmented Control (Estados) */
+                /* Estilos robustos para Segmented Control (Estados) */
+                /* Base para el botón seleccionado */
+                div[data-testid="stSegmentedControl"] button[aria-checked="true"] {
+                    color: white !important;
+                    font-weight: bold !important;
+                }
+                
                 /* ACTIVO/A (Verde) */
-                div[data-testid="stSegmentedControl"] div[role="radiogroup"] > div:nth-child(1) button[aria-checked="true"] {
+                div[data-testid="stSegmentedControl"] button[aria-label*="ACTIVO"][aria-checked="true"],
+                div[data-testid="stSegmentedControl"] button[aria-label*="ACTIVA"][aria-checked="true"] {
                     background-color: #28a745 !important;
-                    color: white !important;
                 }
+                
                 /* INACTIVO/A (Rojo claro) */
-                div[data-testid="stSegmentedControl"] div[role="radiogroup"] > div:nth-child(2) button[aria-checked="true"] {
-                    background-color: #f8d7da !important;
-                    color: #721c24 !important;
+                div[data-testid="stSegmentedControl"] button[aria-label*="INACTIVO"][aria-checked="true"],
+                div[data-testid="stSegmentedControl"] button[aria-label*="INACTIVA"][aria-checked="true"] {
+                    background-color: #ffcccc !important;
+                    color: #900 !important; /* Texto oscuro para contraste en fondo claro */
                 }
+                
                 /* IRRECUPERABLE (Rojo oscuro) */
-                div[data-testid="stSegmentedControl"] div[role="radiogroup"] > div:nth-child(3) button[aria-checked="true"] {
-                    background-color: #721c24 !important;
-                    color: white !important;
+                div[data-testid="stSegmentedControl"] button[aria-label*="IRRECUPERABLE"][aria-checked="true"] {
+                    background-color: #900 !important;
                 }
             </style>
         """, unsafe_allow_html=True)
