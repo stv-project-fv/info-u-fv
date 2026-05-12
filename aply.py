@@ -740,6 +740,11 @@ try:
         if df_seg.empty:
             st.info("No se encontraron unidades.")
         else:
+            # Obtener opciones de estado únicas de la fuente (AUX2)
+            opciones_estado = sorted([s for s in df['ESTADO'].unique() if s])
+            if not opciones_estado:
+                opciones_estado = ["ACTIVO", "INACTIVO", "IRRECUPERABLE"]
+                
             # Encabezados
             h1, h2, h3, h4 = st.columns([1.5, 1, 1.5, 1])
             h1.markdown("**Unidad (Actual)**")
@@ -759,11 +764,11 @@ try:
                 if ex_val and ex_val.lower() != "nan":
                     id_display += f" (ex {ex_val})"
                 
-                # Mapeo de estado para el selectbox
-                opciones_estado = ["ACTIVO/A", "INACTIVO/A", "IRRECUPERABLE"]
-                idx_estado = 0
-                if "INACTIVO" in estado_actual: idx_estado = 1
-                elif "IRRECUPERABLE" in estado_actual: idx_estado = 2
+                # Mapeo de estado dinámico
+                try:
+                    idx_estado = opciones_estado.index(estado_actual)
+                except ValueError:
+                    idx_estado = 0
                 
                 with st.container():
                     c1, c2, c3, c4 = st.columns([1.5, 1, 1.5, 1])
@@ -795,15 +800,9 @@ try:
                                 if final_diag:
                                     updates['DIAGNÓSTICO'] = final_diag
                                 
-                                # Lógica de Estado
-                                if new_status == "ACTIVO/A":
-                                    sufijo = obtener_terminacion(row['TIPO'])
-                                    updates['ESTADO'] = f"ACTIV{sufijo}"
-                                elif new_status == "INACTIVO/A":
-                                    sufijo = obtener_terminacion(row['TIPO'])
-                                    updates['ESTADO'] = f"INACTIV{sufijo}"
-                                else:
-                                    updates['ESTADO'] = "IRRECUPERABLE"
+                                # Lógica de Estado (Directo de la fuente)
+                                if new_status != estado_actual:
+                                    updates['ESTADO'] = new_status
                                 
                                 if updates:
                                     if update_unit_data(u, updates):
