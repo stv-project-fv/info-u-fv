@@ -463,12 +463,20 @@ try:
                         for _, r in df_tipo_inact.iterrows():
                             ex_val = str(r.get('EX', '')).strip()
                             nombre_ex = f" (ex {ex_val})" if ex_val != "" and ex_val.lower() != "nan" else ""
-                            lista_inact_full += f"- [{tipo}] {r['UNIDAD']}{nombre_ex} ({r.get('ÁREA', '')}): {r.get('DIAGNÓSTICO', '')}\n"
+                            # Construir info de ubicación/proveedor si existen las columnas
+                            ubi = r.get('UBICACIÓN', r.get('UBICACION', ''))
+                            prov = r.get('PROVEEDOR', '')
+                            loc_info = f" [Ubicación: {ubi}]" if ubi else ""
+                            prov_info = f" [Proveedor: {prov}]" if prov else ""
+                            lista_inact_full += f"- [{tipo}] {r['UNIDAD']}{nombre_ex} ({r.get('ÁREA', '')}): {r.get('DIAGNÓSTICO', '')}{loc_info}{prov_info}\n"
                     
                     if lista_inact_full:
                         sys_ins = (
                             "Eres un supervisor de taller experto. Tu misión es analizar la lista de unidades inactivas y generar un resumen ejecutivo de diagnósticos "
-                            "extremadamente conciso (máximo 10 palabras por unidad). Agrupa por tipo de maquinaria. Usa el emoji 🔺 para cada unidad inactiva. "
+                            "extremadamente conciso (máximo 10 palabras por unidad). Agrupa por tipo de maquinaria. Usa el formato *TIPO* (en cursiva) para los títulos de cada grupo. "
+                            "Usa el emoji 🔺 para cada unidad inactiva. "
+                            "IMPORTANTE: Siempre que se nombre que una unidad está en el taller de un proveedor, DEBES decir en qué proveedor está. "
+                            "No aclares la ubicación si la unidad está en su lugar de trabajo habitual (corralón municipal o AGFA); solo acláralo si no está en esos lugares. "
                             "No incluyas saludos ni despedidas, ve directo al grano para que sea fácil de leer en WhatsApp."
                         )
                         prompt = f"Analiza estas unidades inactivas y genera un resumen consolidado de novedades:\n\n{lista_inact_full}"
@@ -603,7 +611,12 @@ try:
                             reporte_manual_grouped += f"- *{row['UNIDAD']}*{nombre_ex} ({area_str}) {emoji_nov} {diag}\n"
                             
                             # Formato para IA (si se requiere)
-                            lista_inact_full += f"- [{tipo}] {row['UNIDAD']}{nombre_ex} ({area_str}): {diag}\n"
+                            # Construir info de ubicación/proveedor si existen las columnas
+                            ubi = row.get('UBICACIÓN', row.get('UBICACION', ''))
+                            prov = row.get('PROVEEDOR', '')
+                            loc_info = f" [Ubicación: {ubi}]" if ubi else ""
+                            prov_info = f" [Proveedor: {prov}]" if prov else ""
+                            lista_inact_full += f"- [{tipo}] {row['UNIDAD']}{nombre_ex} ({area_str}): {diag}{loc_info}{prov_info}\n"
                         
                         reporte_manual_grouped += "\n"
 
@@ -613,7 +626,10 @@ try:
                     if resumen_ia_inact:
                         sys_ins = (
                             "Eres un supervisor de taller experto. Tu misión es analizar la lista de unidades inactivas y generar un resumen ejecutivo de diagnósticos "
-                            "extremadamente conciso (máximo 10 palabras por unidad). Agrupa por tipo de maquinaria. Usa el emoji 🔺 para cada unidad inactiva. "
+                            "extremadamente conciso (máximo 10 palabras por unidad). Agrupa por tipo de maquinaria. Usa el formato *TIPO* (en cursiva) para los títulos de cada grupo. "
+                            "Usa el emoji 🔺 para cada unidad inactiva. "
+                            "IMPORTANTE: Siempre que se nombre que una unidad está en el taller de un proveedor, DEBES decir en qué proveedor está. "
+                            "No aclares la ubicación si la unidad está en su lugar de trabajo habitual (corralón municipal o AGFA); solo acláralo si no está en esos lugares. "
                             "No incluyas saludos ni despedidas, ve directo al grano para que sea fácil de leer en WhatsApp."
                         )
                         prompt = f"Analiza estas unidades inactivas y genera un resumen consolidado de novedades:\n\n{lista_inact_full}"
