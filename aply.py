@@ -580,7 +580,10 @@ try:
                 st.warning("Debe seleccionar al menos un Tipo de Unidad.")
             else:
                 fecha_hoy = datetime.now().strftime("%d/%m/%y")
-                reporte_inactivos = f"*DETALLE DE INACTIVOS - {fecha_hoy}*\n\n"
+                # Cambio de título solicitado
+                txt_titulo = "RESUMEN" if resumen_ia_inact else "DETALLE"
+                reporte_titulo = f"*{txt_titulo} DE INACTIVOS {fecha_hoy}*"
+                reporte_cuerpo = ""
                 
                 # Construir la lista de inactivos respetando el ORDEN de selección
                 lista_inact_full = ""
@@ -611,7 +614,6 @@ try:
                             reporte_manual_grouped += f"- *{row['UNIDAD']}*{nombre_ex} ({area_str}) {emoji_nov} {diag}\n"
                             
                             # Formato para IA (si se requiere)
-                            # Construir info de ubicación/proveedor si existen las columnas
                             ubi = row.get('UBICACIÓN', row.get('UBICACION', ''))
                             prov = row.get('PROVEEDOR', '')
                             loc_info = f" [Ubicación: {ubi}]" if ubi else ""
@@ -621,7 +623,7 @@ try:
                         reporte_manual_grouped += "\n"
 
                 if not hay_inactivos:
-                    reporte_inactivos += "No se registraron unidades inactivas para los tipos seleccionados."
+                    reporte_cuerpo = "No se registraron unidades inactivas para los tipos seleccionados."
                 else:
                     if resumen_ia_inact:
                         sys_ins = (
@@ -637,11 +639,16 @@ try:
                         with st.spinner("Generando resumen de novedades..."):
                             resumen_total = ask_gemini(prompt, system_instruction=sys_ins)
                             if resumen_total and "Error" not in resumen_total:
-                                reporte_inactivos += "*RESUMEN DE NOVEDADES*\n" + resumen_total
+                                reporte_cuerpo = "*RESUMEN DE NOVEDADES*\n" + resumen_total
                             else:
-                                reporte_inactivos += "\n*(No se pudo generar el resumen de novedades)*\n"
+                                reporte_cuerpo = "\n*(No se pudo generar el resumen de novedades)*\n"
                     else:
-                        reporte_inactivos += reporte_manual_grouped
+                        reporte_cuerpo = reporte_manual_grouped
+
+                # Implementación del truco "Leer más" (chr(0x200e) x 4000)
+                read_more_char = chr(0x200e)
+                espaciador = read_more_char * 4000
+                reporte_inactivos = f"{reporte_titulo}{espaciador}\n{reporte_cuerpo}"
 
                 st.markdown("### Detalle Generado:")
                 st.text_area(label="Contenido final Inactivos", value=reporte_inactivos, height=400, key="ta_inactivos")
