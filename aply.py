@@ -734,34 +734,36 @@ try:
     with tab5:
         st.markdown("""
             <style>
-                /* Estilos robustos para Segmented Control (Estados) */
-                /* Base para el botón seleccionado */
+                /* Estilos base para el botón seleccionado */
                 div[data-testid="stSegmentedControl"] button[aria-checked="true"] {
                     color: white !important;
                     font-weight: bold !important;
                 }
                 
-                /* ACTIVO/A (Verde) */
-                div[data-testid="stSegmentedControl"] button[aria-label*="ACTIVO"][aria-checked="true"],
-                div[data-testid="stSegmentedControl"] button[aria-label*="ACTIVA"][aria-checked="true"] {
-                    background-color: #28a745 !important;
-                }
-                
-                /* INACTIVO/A (Rojo claro) */
-                div[data-testid="stSegmentedControl"] button[aria-label*="INACTIVO"][aria-checked="true"],
-                div[data-testid="stSegmentedControl"] button[aria-label*="INACTIVA"][aria-checked="true"] {
-                    background-color: #ffcccc !important;
-                    color: #900 !important; /* Texto oscuro para contraste en fondo claro */
-                }
-                
-                /* IRRECUPERABLE (Rojo oscuro) */
-                div[data-testid="stSegmentedControl"] button[aria-label*="IRRECUPERABLE"][aria-checked="true"] {
+                /* 1. IRRECUPERABLE (Rojo oscuro) */
+                div[data-testid="stSegmentedControl"] button[aria-label="IRRECUPERABLE"][aria-checked="true"] {
                     background-color: #900 !important;
+                }
+
+                /* 2. INACTIVO / INACTIVA (Rojo claro) */
+                /* Usamos el selector de coincidencia exacta "=" para evitar conflictos */
+                div[data-testid="stSegmentedControl"] button[aria-label="INACTIVO"][aria-checked="true"],
+                div[data-testid="stSegmentedControl"] button[aria-label="INACTIVA"][aria-checked="true"] {
+                    background-color: #ffcccc !important;
+                    color: #900 !important; 
+                }
+
+                /* 3. ACTIVO / ACTIVA (Verde) */
+                /* Usamos coincidencia exacta "=" para que no se confunda con "INACTIVO" */
+                div[data-testid="stSegmentedControl"] button[aria-label="ACTIVO"][aria-checked="true"],
+                div[data-testid="stSegmentedControl"] button[aria-label="ACTIVA"][aria-checked="true"] {
+                    background-color: #28a745 !important;
+                    color: white !important;
                 }
             </style>
         """, unsafe_allow_html=True)
         
-        st.markdown("## 📝 Seguimiento Manual de Diagnósticos")
+        st.markdown("## 📋 Seguimiento Manual de Diagnósticos")
         
         # Filtro de búsqueda opcional para no saturar la vista
         search_seg = st.text_input("🔍 Buscar unidad por ID o diagnóstico:", "").upper()
