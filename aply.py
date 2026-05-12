@@ -21,7 +21,7 @@ st.set_page_config(
 if "ms_diario_shared" not in st.session_state:
     st.session_state["ms_diario_shared"] = [
         "MOTONIVELADORA", "CAMIÓN VOLCADOR", "RETROEXCAVADORA", 
-        "PALA CARGADORA", "CAMIÓN HIDROELEVADOR", "EXCAVADORA", 
+        "PALA CARGADORA", "HIDROELEVADOR", "EXCAVADORA", 
         "MINICARGADORA"
     ]
 if "cb_ia_shared" not in st.session_state:
@@ -69,6 +69,8 @@ def load_data():
     for col in ['TIPO', 'ESTADO', 'ÁREA']:
         if col in data.columns:
             data[col] = data[col].fillna('').astype(str).str.strip().str.upper()
+            if col == 'TIPO':
+                data[col] = data[col].replace('CAMIÓN HIDROELEVADOR', 'HIDROELEVADOR')
     return data.fillna("")
 
 def obtener_terminacion(tipo):
@@ -102,6 +104,7 @@ def load_data_contratados():
                 st.warning("La hoja AUX2 no tiene las columnas esperadas (TIPO_C, AREA_C, CANTIDAD_C).")
                 return pd.DataFrame(columns=['TIPO_C', 'AREA_C', 'CANTIDAD_C'])
             df_c['TIPO_C'] = df_c['TIPO_C'].fillna('').astype(str).str.strip().str.upper()
+            df_c['TIPO_C'] = df_c['TIPO_C'].replace('CAMIÓN HIDROELEVADOR', 'HIDROELEVADOR')
             df_c['AREA_C'] = df_c['AREA_C'].fillna('').astype(str).str.strip().str.upper()
             df_c['CANTIDAD_C'] = pd.to_numeric(df_c['CANTIDAD_C'], errors='coerce').fillna(0).astype(int)
             return df_c[['TIPO_C', 'AREA_C', 'CANTIDAD_C']]
